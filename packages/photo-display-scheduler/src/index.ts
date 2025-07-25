@@ -1,5 +1,5 @@
 import { createInkyMatteucciEventProducer, ImageStorageService, LoggerService } from "inky-matteucci-commons";
-import { HistoryRandomPickerService } from "./services/historyRandomPickerService";
+import { HistoryRandomPickerService } from "./services/historyRandomPickerService.js";
 
 const imageStorageService = new ImageStorageService();
 const logger = new LoggerService("photo-display-scheduler");
