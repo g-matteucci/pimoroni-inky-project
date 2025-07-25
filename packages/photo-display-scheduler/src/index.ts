@@ -25,7 +25,7 @@ const producer = createInkyMatteucciEventProducer();
 
 logger.info("Starting image display producer...");
 
-async function main() {
+async function printImageToInky() {
   logger.info("Displaying random image...");
 
   const randomPicker = new HistoryRandomPickerService<string>(imageStorageService.listImages(), 5);
@@ -49,7 +49,6 @@ async function main() {
   });
 
   logger.info("Event produced successfully.");
-  await producer.quit();
 }
 
-main();
+setInterval(printImageToInky, 1000 * 60 * 5); // 5 minutes

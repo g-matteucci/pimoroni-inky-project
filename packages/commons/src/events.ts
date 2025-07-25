@@ -66,7 +66,6 @@ export async function consumeInkyMatteucciEvents(
 
 export function createInkyMatteucciEventProducer(): {
   produceEvent: (event: InkyMatteucciEvent) => Promise<void>;
-  quit: () => Promise<unknown>;
 } {
   const redis = new Redis();
   return {
@@ -74,6 +73,5 @@ export function createInkyMatteucciEventProducer(): {
       const serializedEvent = serializeEvent(event);
       await redis.publish(INKY_MATTEUCCI_EVENTS_QUEUE_NAME, serializedEvent);
     },
-    quit: redis.quit.bind(redis),
   };
 }
