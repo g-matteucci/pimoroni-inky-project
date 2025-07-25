@@ -1,4 +1,5 @@
 import { consumeInkyMatteucciEvents, ImageStorageService, LoggerService } from "inky-matteucci-commons";
+import sharp from "sharp";
 import { match } from "ts-pattern";
 
 const imageStorageService = new ImageStorageService();
@@ -12,7 +13,13 @@ consumeInkyMatteucciEvents((event) => {
       logger.info("Adding photo:", e.data.photoId);
       const response = await fetch(e.data.photoUrl);
       const buffer = Buffer.from(await response.arrayBuffer());
-      imageStorageService.saveImage(e.data.photoId, buffer);
+
+      const optimizedImage = await sharp(buffer)
+        .resize({ width: 800, height: 600, fit: "cover" })
+        .jpeg({ quality: 50 })
+        .toBuffer();
+
+      imageStorageService.saveImage(e.data.photoId, optimizedImage);
       logger.info(`Photo saved for ${e.data.photoId}`);
     })
     .with({ type: "removed_photo" }, (e) => {
