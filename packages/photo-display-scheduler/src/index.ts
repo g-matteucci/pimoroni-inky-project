@@ -31,6 +31,7 @@ async function main() {
   });
 
   logger.info("Event produced successfully.");
+  await producer.quit();
 }
 
 main();
