@@ -58,7 +58,7 @@ export async function consumeInkyMatteucciEvents(
   const redis = new Redis();
   redis.subscribe(INKY_MATTEUCCI_EVENTS_QUEUE_NAME);
 
-  redis.on("message", async (channel, message) => {
+  redis.on("message", async (_, message) => {
     const event = deserializeEvent(message);
     await handler(event);
   });
