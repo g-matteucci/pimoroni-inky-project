@@ -1,5 +1,5 @@
 {
-  "name": "inky-matteucci-cronjob",
+  "name": "inky-matteucci-photo-display-scheduler",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -12,6 +12,7 @@
   "dependencies": {
     "inky-matteucci-commons": "link:../commons",
     "ioredis": "^5.6.1",
+    "node-cron": "^4.2.1",
     "redis": "^5.6.1"
   },
   "devDependencies": {

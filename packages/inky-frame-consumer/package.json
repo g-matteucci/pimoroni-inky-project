@@ -1,5 +1,5 @@
 {
-  "name": "inky-matteucci-frame-display-consumer",
+  "name": "inky-matteucci-inky-frame-consumer",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -12,7 +12,8 @@
   "dependencies": {
     "inky-matteucci-commons": "link:../commons",
     "ioredis": "^5.6.1",
-    "redis": "^5.6.1"
+    "redis": "^5.6.1",
+    "ts-pattern": "^5.7.1"
   },
   "devDependencies": {
     "@types/node": "^24.1.0",

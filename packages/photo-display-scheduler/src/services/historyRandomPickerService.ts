@@ -1,4 +1,4 @@
-export class CooldownRandomPicker<T> {
+export class HistoryRandomPickerService<T> {
   private history: T[] = [];
   constructor(private items: T[], private cooldown: number = 5) {}
 

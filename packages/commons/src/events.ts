@@ -1,7 +1,6 @@
 import { Redis } from "ioredis";
 import z from "zod";
-
-export const QUEUE_NAME = "inky-matteucci-queue";
+import { INKY_MATTEUCCI_EVENTS_QUEUE_NAME } from "./constants.js";
 
 export const TelegramPhotoMetadata = z.object({
   id: z.string(),
@@ -36,7 +35,7 @@ export type RemovedPhotoEvent = z.infer<typeof RemovedPhotoEvent>;
 export const DisplayPhotoEvent = z.object({
   type: z.literal("display_photo"),
   data: z.object({
-    photoId: z.string(),
+    photoUrl: z.string(),
   }),
   timestamp: z.string(),
 });
@@ -53,23 +52,25 @@ function deserializeEvent(data: string): InkyMatteucciEvent {
   return InkyMatteucciEvent.parse(JSON.parse(data));
 }
 
-export async function consumeInkyMatteucciEvents(handler: (event: InkyMatteucciEvent) => void): Promise<void> {
+export async function consumeInkyMatteucciEvents(
+  handler: (event: InkyMatteucciEvent) => Promise<void> | void
+): Promise<void> {
   const redis = new Redis();
+  redis.subscribe(INKY_MATTEUCCI_EVENTS_QUEUE_NAME);
 
-  while (true) {
-    const result = await redis.blpop(QUEUE_NAME, 0);
-    if (!result) {
-      continue;
-    }
-
-    const [_, message] = result;
-
+  redis.on("message", async (channel, message) => {
     const event = deserializeEvent(message);
-    handler(event);
-  }
+    await handler(event);
+  });
 }
 
-export async function publishInkyMatteucciEvent(redis: Redis, event: InkyMatteucciEvent): Promise<void> {
-  const serializedEvent = serializeEvent(event);
-  await redis.rpush(QUEUE_NAME, serializedEvent);
+export function createInkyMatteucciEventProducer(): { produceEvent: (event: InkyMatteucciEvent) => Promise<void> } {
+  const redis = new Redis();
+
+  return {
+    produceEvent: async (event: InkyMatteucciEvent): Promise<void> => {
+      const serializedEvent = serializeEvent(event);
+      await redis.publish(INKY_MATTEUCCI_EVENTS_QUEUE_NAME, serializedEvent);
+    },
+  };
 }

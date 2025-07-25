@@ -2,7 +2,11 @@
   "name": "inky-matteucci-root",
   "scripts": {
     "start:redis": "redis-server --daemonize yes",
-    "stop:redis": "redis-cli shutdown"
+    "stop:redis": "redis-cli shutdown",
+    "start:inky-frame-consumer": "pnpm --filter inky-matteucci-inky-frame-consumer start",
+    "start:photo-display-scheduler": "pnpm --filter inky-matteucci-photo-display-scheduler start",
+    "start:photo-processor": "pnpm --filter inky-matteucci-photo-processor start",
+    "start:telegram-bot": "pnpm --filter inky-matteucci-telegram-bot start"
   },
   "packageManager": "pnpm@10.4.1+sha512.c753b6c3ad7afa13af388fa6d808035a008e30ea9993f58c6663e2bc5ff21679aa834db094987129aa4d488b86df57f7b634981b2f827cdcacc698cc0cfb88af"
 }
