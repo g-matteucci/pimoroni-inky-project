@@ -19,18 +19,18 @@ export class LoggerService {
   }
 
   info(msg: string, ...args: any[]) {
-    console.info(msg, ...args);
+    this.logger.info(msg, ...args);
   }
 
   error(msg: string, ...args: any[]) {
-    console.error(msg, ...args);
+    this.logger.error(msg, ...args);
   }
 
   warn(msg: string, ...args: any[]) {
-    console.warn(msg, ...args);
+    this.logger.warn(msg, ...args);
   }
 
   debug(msg: string, ...args: any[]) {
-    console.debug(msg, ...args);
+    this.logger.debug(msg, ...args);
   }
 }
