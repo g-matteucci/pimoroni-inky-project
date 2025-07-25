@@ -1,4 +1,3 @@
-import cron from "node-cron";
 import { createInkyMatteucciEventProducer, ImageStorageService, LoggerService } from "inky-matteucci-commons";
 import { HistoryRandomPickerService } from "./services/historyRandomPickerService";
 
@@ -34,4 +33,4 @@ async function main() {
   logger.info("Event produced successfully.");
 }
 
-cron.schedule("*/15 * * * *", main);
+main();

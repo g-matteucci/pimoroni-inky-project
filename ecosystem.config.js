@@ -13,6 +13,8 @@ module.exports = {
     {
       name: "photo-display-scheduler",
       cwd: "./packages/photo-display-scheduler/src",
+      cron_restart: "*/15 * * * *",
+      autorestart: false,
       script: "index.ts",
       interpreter: "bun",
       env: {

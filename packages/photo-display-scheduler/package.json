@@ -12,7 +12,6 @@
   "dependencies": {
     "inky-matteucci-commons": "link:../commons",
     "ioredis": "^5.6.1",
-    "node-cron": "^4.2.1",
     "redis": "^5.6.1"
   },
   "devDependencies": {

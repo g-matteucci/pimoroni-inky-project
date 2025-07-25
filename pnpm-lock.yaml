@@ -69,9 +69,6 @@ importers:
       ioredis:
         specifier: ^5.6.1
         version: 5.6.1
-      node-cron:
-        specifier: ^4.2.1
-        version: 4.2.1
       redis:
         specifier: ^5.6.1
         version: 5.6.1
