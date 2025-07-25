@@ -15,7 +15,7 @@ consumeInkyMatteucciEvents((event) => {
       const buffer = Buffer.from(await response.arrayBuffer());
 
       const optimizedImage = await sharp(buffer)
-        .resize({ width: 800, height: 600, fit: "cover" })
+        .resize({ width: 800, height: 600, fit: "contain" })
         .jpeg({ quality: 50 })
         .toBuffer();
 
