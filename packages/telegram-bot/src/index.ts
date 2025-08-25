@@ -189,7 +189,7 @@ bot.start(async (ctx) => {
   const commandsPublic = [
     "/start - mostra queste informazioni",
     "(invio foto) - salva una nuova immagine da usare sull’Inky",
-    "/current - mostra l'immagine attualmente mostrata sull'Inky"
+    "/current - mostra l'immagine attualmente sull'Inky"
   ];
 
   const commandsPrivate = [
