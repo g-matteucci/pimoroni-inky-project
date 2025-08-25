@@ -111,31 +111,6 @@ importers:
         specifier: ^5.8.3
         version: 5.8.3
 
-  packages/playground:
-    dependencies:
-      inky-matteucci-commons:
-        specifier: link:../commons
-        version: link:../commons
-      ioredis:
-        specifier: ^5.6.1
-        version: 5.6.1
-      node-cron:
-        specifier: ^4.2.1
-        version: 4.2.1
-      redis:
-        specifier: ^5.6.1
-        version: 5.6.1
-    devDependencies:
-      '@types/node':
-        specifier: ^24.1.0
-        version: 24.1.0
-      tsx:
-        specifier: ^4.20.3
-        version: 4.20.3
-      typescript:
-        specifier: ^5.8.3
-        version: 5.8.3
-
   packages/telegram-bot:
     dependencies:
       dotenv:
@@ -619,10 +594,6 @@ packages:
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
 
-  node-cron@4.2.1:
-    resolution: {integrity: sha512-lgimEHPE/QDgFlywTd8yTR61ptugX3Qer29efeyWw2rv259HtGBNn1vZVmp8lB9uo9wC0t/AT4iGqXxia+CJFg==}
-    engines: {node: '>=6.0.0'}
-
   node-fetch@2.7.0:
     resolution: {integrity: sha512-c4FRfUm/dbcWZ7U+1Wq0AwCyFL+3nt2bEw05wfxSz+DWpWsitgmSgYmy2dQdWyKC1694ELPqMs/YzUSNozLt8A==}
     engines: {node: 4.x || >=6.0.0}
@@ -1105,8 +1076,6 @@ snapshots:
   mri@1.2.0: {}
 
   ms@2.1.3: {}
-
-  node-cron@4.2.1: {}
 
   node-fetch@2.7.0:
     dependencies:
