@@ -89,27 +89,9 @@ async function displayRandomImage(): Promise<"ok" | "noImages" | { waitMs: numbe
     data: { photoUrl: fullPath },
     timestamp: new Date().toISOString(),
   });
-  config.last_display_at = new Date().toISOString();
-  saveConfig(config);
-  logger.info(`Displayed: ${fullPath}`);
-  return "ok";
-}
-
-async function displayRandomImage(): Promise<"ok" | "noImages" | { waitMs: number }> {
-  const gate = canShuffleNow();
-  if (!gate.allowed) return { waitMs: gate.msRemaining };
-  const choice = picker.pick();
-  if (!choice) return "noImages";
-
-  const fullPath = storage.getFileFullPath(choice);
-  await producer.produceEvent({
-    type: "display_photo",
-    data: { photoUrl: fullPath },
-    timestamp: new Date().toISOString(),
-  });
 
   config.last_display_at = new Date().toISOString();
-  config.current_photo_url = fullPath;         // NEW
+  config.current_photo_url = fullPath;   
   saveConfig(config);
 
   logger.info(`Displayed: ${fullPath}`);
@@ -164,25 +146,26 @@ consumeInkyMatteucciEvents(async (event) => {
     return;
   }
 
-  if (event.type === "request_current") { // NEW
+  if (event.type === "request_current") {
     const { chatId } = event.data as { chatId: number };
-    const path = config.current_photo_url;
+    const p = config.current_photo_url;
+    logger.info(`request_current: chat=${chatId} current=${p ?? "-"}`);
 
-    if (path && fs.existsSync(path)) {
-      await producer.produceEvent({
+    if (p && fs.existsSync(p)) {
+        await producer.produceEvent({
         type: "current_result",
-        data: { chatId, ok: true, photoUrl: path },
+        data: { chatId, ok: true, photoUrl: p },
         timestamp: new Date().toISOString(),
-      });
+        });
     } else {
-      await producer.produceEvent({
+        await producer.produceEvent({
         type: "current_result",
         data: { chatId, noImages: true },
         timestamp: new Date().toISOString(),
-      });
+        });
     }
     return;
   }
-  
+
 });
 

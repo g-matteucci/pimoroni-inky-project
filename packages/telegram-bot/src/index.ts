@@ -269,52 +269,65 @@ bot.command("current", async (ctx) => {
 /** -------------------- Listen for scheduler replies -------------------- **/
 
 consumeInkyMatteucciEvents(async (event) => {
-  if (event.type !== "next_result") return;
-  const { chatId, ok, msRemaining, noImages } = event.data;
+  switch (event.type) {
+    case "next_result": {
+      const { chatId, ok, msRemaining, noImages } = event.data;
+      logger.info(
+        `EVENT next_result: chat=${chatId} ok=${ok} noImages=${noImages} msRemaining=${msRemaining ?? "-"}`
+      );
 
-  logger.info(`EVENT next_result: chat=${chatId} ok=${ok} noImages=${noImages} msRemaining=${msRemaining ?? "-"}`); // NEW
-
-  if (noImages) {
-    return bot.telegram.sendMessage(chatId, "Nessuna immagine disponibile al momento.");
-  }
-  if (ok) {
-    return bot.telegram.sendMessage(chatId, "Ok, a breve l'immagine dovrebbe cambiare (pochi secondi...)");
-  }
-  if (typeof msRemaining === "number") {
-    return bot.telegram.sendMessage(
-      chatId,
-      `Troppo presto per cambiare. Riprova tra ${msToHuman(msRemaining)}.`
-    );
-  }
-  if (event.type === "current_result") {
-    const { chatId, ok, noImages, photoUrl } = event.data as {
-      chatId: number; ok?: boolean; noImages?: boolean; photoUrl?: string;
-    };
-
-    if (noImages) {
-      return bot.telegram.sendMessage(chatId, "Nessuna immagine disponibile al momento.");
-    }
-    if (ok && photoUrl) {
-      await bot.telegram.sendMessage(chatId, "Questa è l'immagine attualmente sull'Inky");
-
-      try {
-        if (/^https?:\/\//i.test(photoUrl)) {
-          await bot.telegram.sendPhoto(chatId, { url: photoUrl });
-        } else {
-          // path locale: leggi dal filesystem
-          await bot.telegram.sendPhoto(chatId, { source: fs.createReadStream(photoUrl) });
-        }
-      } catch (err) {
-        logger.error(`Failed to send current photo "${photoUrl}": ${(err as Error).message}`);
-        await bot.telegram.sendMessage(chatId, "Non riesco a leggere l'immagine corrente dal server.");
+      if (noImages) {
+        await bot.telegram.sendMessage(chatId, "Nessuna immagine disponibile al momento.");
+      } else if (ok) {
+        await bot.telegram.sendMessage(chatId, "Ok, a breve l'immagine dovrebbe cambiare (pochi secondi...)");
+      } else if (typeof msRemaining === "number") {
+        await bot.telegram.sendMessage(
+          chatId,
+          `Troppo presto per cambiare. Riprova tra ${msToHuman(msRemaining)}.`
+        );
       }
       return;
     }
 
-    // Fallback generico
-    return bot.telegram.sendMessage(chatId, "Nessuna immagine disponibile al momento.");
+    case "current_result": {
+      const { chatId, ok, noImages, photoUrl } = event.data as {
+        chatId: number; ok?: boolean; noImages?: boolean; photoUrl?: string;
+      };
+      logger.info(
+        `EVENT current_result: chat=${chatId} ok=${ok} noImages=${noImages} photoUrl=${photoUrl ?? "-"}`
+      );
+
+      if (noImages) {
+        await bot.telegram.sendMessage(chatId, "Nessuna immagine disponibile al momento.");
+        return;
+      }
+
+      if (ok && photoUrl) {
+        await bot.telegram.sendMessage(chatId, "Questa è l'immagine attualmente sull'Inky");
+        try {
+          if (/^https?:\/\//i.test(photoUrl)) {
+            await bot.telegram.sendPhoto(chatId, { url: photoUrl });
+          } else {
+            await bot.telegram.sendPhoto(chatId, { source: fs.createReadStream(photoUrl) });
+          }
+        } catch (err) {
+          logger.error(`Failed to send current photo "${photoUrl}": ${(err as Error).message}`);
+          await bot.telegram.sendMessage(chatId, "Non riesco a leggere l'immagine corrente dal server.");
+        }
+        return;
+      }
+
+      // Fallback
+      await bot.telegram.sendMessage(chatId, "Nessuna immagine disponibile al momento.");
+      return;
+    }
+
+    default:
+      // altri eventi non gestiti qui
+      return;
   }
 });
+
 
 /** -------------------- Launch & graceful stop -------------------- **/
 
