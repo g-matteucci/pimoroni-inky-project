@@ -255,6 +255,17 @@ bot.command("next", requireWhitelist, async (ctx) => {
   });
 });
 
+/** -------------------- /current   -------------------- **/
+bot.command("current", async (ctx) => {
+  logger.info(`CMD /current handler: from=${ctx.from?.id} chat=${ctx.chat?.id}`);
+  await producer.produceEvent({
+    type: "request_current",
+    data: { chatId: ctx.chat.id, requestedBy: ctx.from?.id },
+    timestamp: new Date().toISOString(),
+  });
+});
+
+
 /** -------------------- Listen for scheduler replies -------------------- **/
 
 consumeInkyMatteucciEvents(async (event) => {
@@ -274,6 +285,34 @@ consumeInkyMatteucciEvents(async (event) => {
       chatId,
       `Troppo presto per cambiare. Riprova tra ${msToHuman(msRemaining)}.`
     );
+  }
+  if (event.type === "current_result") {
+    const { chatId, ok, noImages, photoUrl } = event.data as {
+      chatId: number; ok?: boolean; noImages?: boolean; photoUrl?: string;
+    };
+
+    if (noImages) {
+      return bot.telegram.sendMessage(chatId, "Nessuna immagine disponibile al momento.");
+    }
+    if (ok && photoUrl) {
+      await bot.telegram.sendMessage(chatId, "Questa è l'immagine attualmente sull'Inky");
+
+      try {
+        if (/^https?:\/\//i.test(photoUrl)) {
+          await bot.telegram.sendPhoto(chatId, { url: photoUrl });
+        } else {
+          // path locale: leggi dal filesystem
+          await bot.telegram.sendPhoto(chatId, { source: fs.createReadStream(photoUrl) });
+        }
+      } catch (err) {
+        logger.error(`Failed to send current photo "${photoUrl}": ${(err as Error).message}`);
+        await bot.telegram.sendMessage(chatId, "Non riesco a leggere l'immagine corrente dal server.");
+      }
+      return;
+    }
+
+    // Fallback generico
+    return bot.telegram.sendMessage(chatId, "Nessuna immagine disponibile al momento.");
   }
 });
 

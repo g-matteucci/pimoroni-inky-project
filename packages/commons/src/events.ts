@@ -79,6 +79,31 @@ export const NextResultEvent = z.object({
 });
 export type NextResultEvent = z.infer<typeof NextResultEvent>;
 
+// Bot → Scheduler: ask current image
+export const RequestCurrentEvent = z.object({
+  type: z.literal("request_current"),
+  data: z.object({
+    chatId: z.number(),
+    requestedBy: z.number().optional(),
+  }),
+  timestamp: z.string(),
+});
+export type RequestCurrentEvent = z.infer<typeof RequestCurrentEvent>;
+
+// Scheduler → Bot: reply with current image
+export const CurrentResultEvent = z.object({
+  type: z.literal("current_result"),
+  data: z.object({
+    chatId: z.number(),
+    ok: z.boolean().optional(),
+    noImages: z.boolean().optional(),
+    photoUrl: z.string().optional(), // path locale o URL
+  }),
+  timestamp: z.string(),
+});
+export type CurrentResultEvent = z.infer<typeof CurrentResultEvent>;
+
+
 /* --- Updated event union --- */
 export const InkyMatteucciEvent = z.discriminatedUnion("type", [
   AddedPhotoEvent,
@@ -87,6 +112,8 @@ export const InkyMatteucciEvent = z.discriminatedUnion("type", [
   SetShuffleEvent,
   RequestNextEvent,
   NextResultEvent,
+  RequestCurrentEvent,
+  CurrentResultEvent,
 ]);
 export type InkyMatteucciEvent = z.infer<typeof InkyMatteucciEvent>;
 
@@ -122,4 +149,6 @@ export function createInkyMatteucciEventProducer(): {
     },
   };
 }
+
+
 

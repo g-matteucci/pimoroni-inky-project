@@ -13,6 +13,7 @@ type AppConfig = {
   min_shuffle_time: number;        // minuti, hard floor
   default_shuffle_time: number;    // minuti, scheduler interval
   last_display_at?: string;        // ISO last successful rotation
+  current_photo_url?: string;      // last picture
 };
 
 const logger = new LoggerService("photo-display-scheduler");
@@ -94,6 +95,27 @@ async function displayRandomImage(): Promise<"ok" | "noImages" | { waitMs: numbe
   return "ok";
 }
 
+async function displayRandomImage(): Promise<"ok" | "noImages" | { waitMs: number }> {
+  const gate = canShuffleNow();
+  if (!gate.allowed) return { waitMs: gate.msRemaining };
+  const choice = picker.pick();
+  if (!choice) return "noImages";
+
+  const fullPath = storage.getFileFullPath(choice);
+  await producer.produceEvent({
+    type: "display_photo",
+    data: { photoUrl: fullPath },
+    timestamp: new Date().toISOString(),
+  });
+
+  config.last_display_at = new Date().toISOString();
+  config.current_photo_url = fullPath;         // NEW
+  saveConfig(config);
+
+  logger.info(`Displayed: ${fullPath}`);
+  return "ok";
+}
+
 let timer: NodeJS.Timeout | null = null;
 function reschedule() {
   if (timer) clearInterval(timer);
@@ -141,5 +163,26 @@ consumeInkyMatteucciEvents(async (event) => {
     }
     return;
   }
+
+  if (event.type === "request_current") { // NEW
+    const { chatId } = event.data as { chatId: number };
+    const path = config.current_photo_url;
+
+    if (path && fs.existsSync(path)) {
+      await producer.produceEvent({
+        type: "current_result",
+        data: { chatId, ok: true, photoUrl: path },
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      await producer.produceEvent({
+        type: "current_result",
+        data: { chatId, noImages: true },
+        timestamp: new Date().toISOString(),
+      });
+    }
+    return;
+  }
+  
 });
 
