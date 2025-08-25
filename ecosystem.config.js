@@ -38,7 +38,8 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         PATH: `${process.env.HOME}/.bun/bin:${process.env.PATH}`,
-        TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+	TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+	TELEGRAM_USERS_WHITELIST: process.env.TELEGRAM_USERS_WHITELIST,
       },
     },
   ],

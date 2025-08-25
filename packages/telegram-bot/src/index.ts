@@ -205,7 +205,6 @@ bot.start(async (ctx) => {
     ...introForAll,
     "",
     accessLine,
-    "",
     "Comandi disponibili:",
     ...commandsPublic,
     ...(allowed ? commandsPrivate : []),
