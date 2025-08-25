@@ -11,7 +11,8 @@ import {
   LoggerService,
 } from "inky-matteucci-commons";
 
-dotenv.config({ path: "./.env" });
+// (opzionale ma utile se qualche env arriva da PM2/systemd)
+dotenv.config({ path: "./.env", override: true }); // NEW
 
 /** -------------------- Config & helpers -------------------- **/
 
@@ -35,7 +36,6 @@ function loadConfig(): AppConfig {
     }
     return cfg;
   } catch {
-    // Scheduler is the authority; if file doesn't exist yet, fall back to defaults
     return defaults;
   }
 }
@@ -51,7 +51,6 @@ function msToHuman(ms: number) {
 
 /** -------------------- Whitelist -------------------- **/
 
-
 function parseWhitelist(raw: string | undefined): Set<number> {
   return new Set(
     (raw ?? "")
@@ -65,19 +64,6 @@ function parseWhitelist(raw: string | undefined): Set<number> {
 const whitelist = parseWhitelist(process.env.TELEGRAM_USERS_WHITELIST);
 const isWhitelisted = (id?: number) => typeof id === "number" && whitelist.has(id);
 
-/** Middleware for commands that require whitelist */
-function requireWhitelist(ctx: any, next: () => Promise<any>) {
-  const id = ctx.from?.id as number | undefined;
-  if (!isWhitelisted(id)) {
-    // Reply politely and include the numeric id so the admin can add it if needed
-    return ctx.reply(
-      `Questa funzione è riservata agli utenti autorizzati.\n` +
-      `Il tuo ID è: ${id ?? "sconosciuto"}. Se vuoi l’accesso, contatta Peppe.`
-    );
-  }
-  return next();
-}
-
 /** -------------------- Boot -------------------- **/
 
 if (!process.env.TELEGRAM_BOT_TOKEN) {
@@ -88,7 +74,51 @@ const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 const logger = new LoggerService("telegram-bot");
 const producer = createInkyMatteucciEventProducer();
 
+// Log iniziale della whitelist letta da env
+logger.info(`WL_RAW=${JSON.stringify(process.env.TELEGRAM_USERS_WHITELIST)}`); // NEW
+logger.info(`WL_PARSED=[${[...whitelist].join(", ")}]`); // NEW
+
 logger.info("Starting Telegram bot…");
+
+// Middleware globale: logga qualsiasi messaggio che sembra un comando "/..."
+bot.use(async (ctx, next) => { // NEW
+  const chatId = ctx.chat?.id;
+  const from = ctx.from;
+  const text = (ctx.message as any)?.text;
+  const isCommand = typeof text === "string" && text.startsWith("/");
+  if (isCommand) {
+    const cmd = text.split(/\s+/)[0];
+    logger.info(
+      `CMD incoming: cmd=${cmd} from=@${from?.username ?? "-"}(${from?.id ?? "-"}) chat=${chatId}`
+    );
+  }
+  return next();
+});
+
+// Helper per estrarre il comando (per i log whitelist)
+function getCommand(ctx: any): string { // NEW
+  const text = ctx.message?.text ?? "";
+  const m = /^\/([A-Za-z0-9_]+)/.exec(text);
+  return m ? m[1] : "unknown";
+}
+
+/** Middleware per comandi riservati: logga check whitelist + esito */
+async function requireWhitelist(ctx: any, next: () => Promise<any>) { // NEW (sostituisce il tuo)
+  const id = ctx.from?.id as number | undefined;
+  const allowed = isWhitelisted(id);
+  const cmd = getCommand(ctx);
+  logger.info(
+    `WL_CHECK: cmd=/${cmd} from=@${ctx.from?.username ?? "-"}(${id ?? "-"}) ` +
+    `chat=${ctx.chat?.id} allowed=${allowed} wl=[${[...whitelist].join(", ")}]`
+  );
+  if (!allowed) {
+    return ctx.reply(
+      `Questa funzione è riservata agli utenti autorizzati.\n` +
+      `Il tuo ID è: ${id ?? "sconosciuto"}. Se vuoi l’accesso, contatta Peppe.`
+    );
+  }
+  return next();
+}
 
 /** -------------------- Photo uploads (open to everyone) -------------------- **/
 
@@ -140,6 +170,9 @@ bot.on(message("photo"), async (ctx) => {
 /** -------------------- /start (public, personalized) -------------------- **/
 
 bot.start(async (ctx) => {
+  // Log anche qui per completezza
+  logger.info(`CMD /start handler: from=@${ctx.from?.username ?? "-"}(${ctx.from?.id}) chat=${ctx.chat?.id}`); // NEW
+
   const cfg = loadConfig();
   const allowed = isWhitelisted(ctx.from?.id);
 
@@ -183,9 +216,11 @@ bot.start(async (ctx) => {
   return ctx.reply(lines.join("\n"));
 });
 
-/** -------------------- /set_shuffle <min> (whitelisted) -------------------- **/
+/** -------------------- /set_shuffle (whitelisted) -------------------- **/
 
 bot.command("set_shuffle", requireWhitelist, async (ctx) => {
+  logger.info(`CMD /set_shuffle handler: text="${ctx.message.text}" from=${ctx.from?.id} chat=${ctx.chat?.id}`); // NEW
+
   const cfg = loadConfig();
   const parts = ctx.message.text.trim().split(/\s+/);
   const value = Number(parts[1]);
@@ -194,7 +229,6 @@ bot.command("set_shuffle", requireWhitelist, async (ctx) => {
     return ctx.reply("Uso: /set_shuffle <minuti>. Esempio: /set_shuffle 5");
   }
 
-  // UX clamp to the configured minimum (scheduler will clamp again authoritatively)
   const effective = Math.max(value, cfg.min_shuffle_time);
   await producer.produceEvent({
     type: "set_shuffle",
@@ -213,12 +247,13 @@ bot.command("set_shuffle", requireWhitelist, async (ctx) => {
 /** -------------------- /next (whitelisted) -------------------- **/
 
 bot.command("next", requireWhitelist, async (ctx) => {
+  logger.info(`CMD /next handler: from=${ctx.from?.id} chat=${ctx.chat?.id}`); // NEW
+
   await producer.produceEvent({
     type: "request_next",
     data: { chatId: ctx.chat.id, requestedBy: ctx.from.id },
     timestamp: new Date().toISOString(),
   });
-  // The scheduler will answer with a next_result event; we reply from the consumer below
 });
 
 /** -------------------- Listen for scheduler replies -------------------- **/
@@ -226,6 +261,8 @@ bot.command("next", requireWhitelist, async (ctx) => {
 consumeInkyMatteucciEvents(async (event) => {
   if (event.type !== "next_result") return;
   const { chatId, ok, msRemaining, noImages } = event.data;
+
+  logger.info(`EVENT next_result: chat=${chatId} ok=${ok} noImages=${noImages} msRemaining=${msRemaining ?? "-"}`); // NEW
 
   if (noImages) {
     return bot.telegram.sendMessage(chatId, "Nessuna immagine disponibile al momento.");
