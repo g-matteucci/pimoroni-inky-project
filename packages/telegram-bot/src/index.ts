@@ -13,6 +13,8 @@ import {
 
 dotenv.config({ path: "./.env" });
 
+/** -------------------- Config & helpers -------------------- **/
+
 type AppConfig = {
   min_shuffle_time: number;
   default_shuffle_time: number;
@@ -33,9 +35,11 @@ function loadConfig(): AppConfig {
     }
     return cfg;
   } catch {
-    return defaults; // lo scheduler creerà il file
+    // Scheduler is the authority; if file doesn't exist yet, fall back to defaults
+    return defaults;
   }
 }
+
 function msToHuman(ms: number) {
   const s = Math.ceil(ms / 1000);
   const m = Math.floor(s / 60);
@@ -45,16 +49,47 @@ function msToHuman(ms: number) {
   return `${m}m ${r}s`;
 }
 
+/** -------------------- Whitelist -------------------- **/
+
+// TELEGRAM_USERS_WHITELIST="123,456,789"
+const whitelist = new Set(
+  (process.env.TELEGRAM_USERS_WHITELIST ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => Number(s))
+    .filter((n) => Number.isFinite(n))
+);
+
+const isWhitelisted = (id?: number) => !!id && whitelist.has(id);
+
+/** Middleware for commands that require whitelist */
+function requireWhitelist(ctx: any, next: () => Promise<any>) {
+  const id = ctx.from?.id as number | undefined;
+  if (!isWhitelisted(id)) {
+    // Reply politely and include the numeric id so the admin can add it if needed
+    return ctx.reply(
+      `Questa funzione è riservata agli utenti autorizzati.\n` +
+      `Il tuo ID è: ${id ?? "sconosciuto"}. Se vuoi l’accesso, contatta l’amministratore.`
+    );
+  }
+  return next();
+}
+
+/** -------------------- Boot -------------------- **/
+
 if (!process.env.TELEGRAM_BOT_TOKEN) {
   throw new Error("TELEGRAM_BOT_TOKEN is not defined in the environment variables");
 }
+
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 const logger = new LoggerService("telegram-bot");
 const producer = createInkyMatteucciEventProducer();
 
-logger.info("Starting Telegram bot...");
+logger.info("Starting Telegram bot…");
 
-/* --- PHOTO UPLOAD COME PRIMA --- */
+/** -------------------- Photo uploads (open to everyone) -------------------- **/
+
 bot.on(message("photo"), async (ctx) => {
   const id = uuidv4();
   const chatId = ctx.chat.id;
@@ -65,14 +100,14 @@ bot.on(message("photo"), async (ctx) => {
   const lastName = user.last_name || "-";
   const timestamp = new Date().toISOString();
 
-  logger.info(`Arrived a photo message from ${username} (${userId}) in chat ${chatId}`);
+  logger.info(`Photo from ${username} (${userId}) in chat ${chatId}`);
 
   const largestPhoto = ctx.message.photo.reduce((max, photo) => {
     return photo?.height > (max?.height ?? 0) ? photo : max;
   }, ctx.message.photo[0]);
 
   if (!largestPhoto) {
-    logger.error(`No photo found in the message from ${username} (${userId}) in chat ${chatId}`);
+    logger.error(`No photo found in message from ${username} (${userId}) in chat ${chatId}`);
     return;
   }
 
@@ -95,28 +130,60 @@ bot.on(message("photo"), async (ctx) => {
     timestamp,
   });
 
-  await bot.telegram.sendMessage(chatId, `Ho salvato la tua fotina! Grazie!`);
+  await ctx.reply(
+    "Ricevuto! La tua foto è stata salvata e sarà pronta per essere mostrata sull'Inky."
+  );
 });
 
-/* --- /start --- */
+/** -------------------- /start (public, personalized) -------------------- **/
+
 bot.start(async (ctx) => {
   const cfg = loadConfig();
-  const txt = [
-    "Ciao! Questo bot gestisce le foto dell'Inky Frame.",
+  const allowed = isWhitelisted(ctx.from?.id);
+
+  const introForAll = [
+    "Ciao! Qui puoi inviare foto che verranno mostrate sulla cornice Inky di Peppe",
+    "Cerca di rispettare il formato a 5:3 per la migliore visualizzazione.",
+    "Tutti possono inviare foto in questa chat.",
+  ];
+
+  const accessLine = allowed
+    ? "Sei nella whitelist: puoi usare le funzioni private."
+    : "";
+
+  const commandsPublic = [
+    "/start - mostra queste informazioni",
+    "(invio foto) - salva una nuova immagine da usare sull’Inky",
+  ];
+
+  const commandsPrivate = [
+    "/next - vai alla prossima foto (rispetta sempre il tempo minimo)",
+    "/set_shuffle <minuti> - imposta l’intervallo di rotazione",
+  ];
+
+  const timingInfo = [
+    `Tempo minimo tra due cambi: ${cfg.min_shuffle_time} min`,
+    `Intervallo di rotazione attuale: ${cfg.default_shuffle_time} min`,
+  ];
+
+  const lines = [
+    ...introForAll,
     "",
-    "Comandi:",
-    "/start - questa guida",
-    "/set_shuffle <min> - imposta l'intervallo di cambio foto",
-    "/next - cambia subito foto (se è passato il tempo minimo)",
+    accessLine,
     "",
-    `Vincolo minimo: ${cfg.min_shuffle_time} min`,
-    `Intervallo corrente: ${cfg.default_shuffle_time} min`,
-  ].join("\n");
-  return ctx.reply(txt);
+    "Comandi disponibili:",
+    ...commandsPublic,
+    ...(allowed ? commandsPrivate : []),
+    "",
+    ...timingInfo,
+  ];
+
+  return ctx.reply(lines.join("\n"));
 });
 
-/* --- /set_shuffle <min> --- */
-bot.command("set_shuffle", async (ctx) => {
+/** -------------------- /set_shuffle <min> (whitelisted) -------------------- **/
+
+bot.command("set_shuffle", requireWhitelist, async (ctx) => {
   const cfg = loadConfig();
   const parts = ctx.message.text.trim().split(/\s+/);
   const value = Number(parts[1]);
@@ -125,6 +192,7 @@ bot.command("set_shuffle", async (ctx) => {
     return ctx.reply("Uso: /set_shuffle <minuti>. Esempio: /set_shuffle 5");
   }
 
+  // UX clamp to the configured minimum (scheduler will clamp again authoritatively)
   const effective = Math.max(value, cfg.min_shuffle_time);
   await producer.produceEvent({
     type: "set_shuffle",
@@ -140,33 +208,39 @@ bot.command("set_shuffle", async (ctx) => {
   return ctx.reply(`Ok! Imposto a ${effective} min.`);
 });
 
-/* --- /next --- */
-bot.command("next", async (ctx) => {
+/** -------------------- /next (whitelisted) -------------------- **/
+
+bot.command("next", requireWhitelist, async (ctx) => {
   await producer.produceEvent({
     type: "request_next",
     data: { chatId: ctx.chat.id, requestedBy: ctx.from.id },
     timestamp: new Date().toISOString(),
   });
-  // La risposta arriverà via evento next_result (vedi consumer sotto)
+  // The scheduler will answer with a next_result event; we reply from the consumer below
 });
 
-/* --- CONSUMO RISPOSTE SCHEDULER --- */
+/** -------------------- Listen for scheduler replies -------------------- **/
+
 consumeInkyMatteucciEvents(async (event) => {
   if (event.type !== "next_result") return;
   const { chatId, ok, msRemaining, noImages } = event.data;
 
   if (noImages) {
-    return bot.telegram.sendMessage(chatId, "Nessuna immagine disponibile.");
+    return bot.telegram.sendMessage(chatId, "Nessuna immagine disponibile al momento.");
   }
   if (ok) {
-    return bot.telegram.sendMessage(chatId, "Immagine cambiata.");
+    return bot.telegram.sendMessage(chatId, "Ok, a breve l'immagine dovrebbe cambiare (pochi secondi...)");
   }
   if (typeof msRemaining === "number") {
-    return bot.telegram.sendMessage(chatId, `Troppo presto. Riprova tra ${msToHuman(msRemaining)}.`);
+    return bot.telegram.sendMessage(
+      chatId,
+      `Troppo presto per cambiare. Riprova tra ${msToHuman(msRemaining)}.`
+    );
   }
 });
+
+/** -------------------- Launch & graceful stop -------------------- **/
 
 bot.launch();
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
-
