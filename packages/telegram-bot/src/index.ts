@@ -51,17 +51,19 @@ function msToHuman(ms: number) {
 
 /** -------------------- Whitelist -------------------- **/
 
-// TELEGRAM_USERS_WHITELIST="123,456,789"
-const whitelist = new Set(
-  (process.env.TELEGRAM_USERS_WHITELIST ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((s) => Number(s))
-    .filter((n) => Number.isFinite(n))
-);
 
-const isWhitelisted = (id?: number) => !!id && whitelist.has(id);
+function parseWhitelist(raw: string | undefined): Set<number> {
+  return new Set(
+    (raw ?? "")
+      .split(/[,\s]+/)                  // separa per virgole/spazi/newline
+      .filter(Boolean)                  // rimuove stringhe vuote
+      .map((s) => Number.parseInt(s, 10))
+      .filter((n) => Number.isSafeInteger(n) && n > 0)
+  );
+}
+
+const whitelist = parseWhitelist(process.env.TELEGRAM_USERS_WHITELIST);
+const isWhitelisted = (id?: number) => typeof id === "number" && whitelist.has(id);
 
 /** Middleware for commands that require whitelist */
 function requireWhitelist(ctx: any, next: () => Promise<any>) {
@@ -70,7 +72,7 @@ function requireWhitelist(ctx: any, next: () => Promise<any>) {
     // Reply politely and include the numeric id so the admin can add it if needed
     return ctx.reply(
       `Questa funzione è riservata agli utenti autorizzati.\n` +
-      `Il tuo ID è: ${id ?? "sconosciuto"}. Se vuoi l’accesso, contatta l’amministratore.`
+      `Il tuo ID è: ${id ?? "sconosciuto"}. Se vuoi l’accesso, contatta Peppe.`
     );
   }
   return next();
