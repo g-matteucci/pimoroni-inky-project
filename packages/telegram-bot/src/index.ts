@@ -11,8 +11,7 @@ import {
   LoggerService,
 } from "inky-matteucci-commons";
 
-// (opzionale ma utile se qualche env arriva da PM2/systemd)
-dotenv.config({ path: "./.env", override: true }); // NEW
+dotenv.config({ path: "./.env", override: true }); 
 
 /** -------------------- Config & helpers -------------------- **/
 

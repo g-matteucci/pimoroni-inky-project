@@ -1,6 +1,7 @@
 {
   "min_shuffle_time": 1,
   "default_shuffle_time": 60,
-  "last_display_at": "2025-08-25T23:30:36.323Z",
-  "current_photo_url": "/home/inkypimoroni/pimoroni-inky-project/.inky-matteucci-data/AgACAgQAAxkBAAOBaKZY3diKdfVINf2FYzi9ScK2iQkAAtbIMRtpwzlRhWcuOt180TQBAAMCAAN5AAM2BA.jpg"
+  "disable_during_night": true,
+  "night_time_start": "02:30",
+  "night_time_end": "08:30"
 }
