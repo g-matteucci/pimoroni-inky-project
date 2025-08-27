@@ -60,6 +60,10 @@ export const RequestNextEvent = z.object({
   data: z.object({
     chatId: z.number(),
     requestedBy: z.number(),
+    target: z.object({
+      photoId: z.string().optional(),
+      photoPath: z.string().optional(),
+    }).optional(),
   }),
   timestamp: z.string(),
 });

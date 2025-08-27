@@ -253,14 +253,33 @@ bot.command("set_shuffle", requireWhitelist, async (ctx) => {
 /** -------------------- /next (whitelisted) -------------------- **/
 
 bot.command("next", requireWhitelist, async (ctx) => {
-  logger.info(`CMD /next handler: from=${ctx.from?.id} chat=${ctx.chat?.id}`); // NEW
+  logger.info(`CMD /next handler: from=${ctx.from?.id} chat=${ctx.chat?.id}`);
+
+  // /next [photoId|/abs/path/to.jpg]
+  const text = ctx.message.text.trim();
+  const parts = text.split(/\s+/);
+  const arg = parts[1]; // opzionale
+
+  let target: { photoId?: string; photoPath?: string } | undefined = undefined;
+
+  if (arg) {
+    if (arg.startsWith("/")) {
+      // path assoluto
+      target = { photoPath: arg };
+    } else {
+      // assumiamo sia un photoId (accettiamo anche con .jpg)
+      const pid = arg.endsWith(".jpg") ? arg.slice(0, -4) : arg;
+      target = { photoId: pid };
+    }
+  }
 
   await producer.produceEvent({
     type: "request_next",
-    data: { chatId: ctx.chat.id, requestedBy: ctx.from.id },
+    data: { chatId: ctx.chat.id, requestedBy: ctx.from.id, target },
     timestamp: new Date().toISOString(),
   });
 });
+
 
 /** -------------------- /current   -------------------- **/
 bot.command("current", async (ctx) => {

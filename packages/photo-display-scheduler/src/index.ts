@@ -8,6 +8,7 @@ import {
   RequestNextEvent,
   SetShuffleEvent,
   PhotoRegistryReader,
+  LOCAL_PHOTOS_PATH,
 } from "inky-matteucci-commons";
 
 /** -------------------- types -------------------- **/
@@ -236,21 +237,49 @@ function canShuffleNow(
 }
 
 async function displayRandomImage(
-  source: "schedule" | "manual"
+  source: "schedule" | "manual",
+  target?: { photoId?: string; photoPath?: string }
 ): Promise<"ok" | "noImages" | { waitMs: number }> {
   const gate = canShuffleNow(source);
   if (!gate.allowed) return { waitMs: gate.msRemaining };
 
-  const choice = picker.pick();
-  if (!choice) return "noImages";
+  let photoId: string | null = null;
+  let fullPath: string | null = null;
 
-  const fullPath = storage.getFileFullPath(choice);
-  const photoId = choice.endsWith(".jpg") ? choice.slice(0, -4) : choice;
+  if (target?.photoPath) {
+    const resolved = path.resolve(target.photoPath);
+    const root = path.resolve(LOCAL_PHOTOS_PATH);
+    if (!resolved.startsWith(root + path.sep)) {
+      return "noImages"; // blocchiamo path fuori dallo storage
+    }
+    fullPath = resolved;
+    const base = path.basename(fullPath);
+    photoId = base.toLowerCase().endsWith(".jpg") ? base.slice(0, -4) : base;
+  } else if (target?.photoId) {
+    photoId = target.photoId.endsWith(".jpg") ? target.photoId.slice(0, -4) : target.photoId;
+    fullPath = storage.getFileFullPath(photoId);
+  } else {
+    const choice = picker.pick();
+    if (!choice) return "noImages";
+    photoId = choice.endsWith(".jpg") ? choice.slice(0, -4) : choice;
+    fullPath = storage.getFileFullPath(choice);
+  }
 
-  // Meta corrente dal registry (fallback Unknown)
+  if (!fullPath || !fs.existsSync(fullPath)) {
+    return "noImages";
+  }
+
+  // --- Metadati correnti dal registry (fallback Unknown) ---
   let current_meta: CurrentMeta | undefined;
   try {
-    const rec = registryReader.getByPhotoId(photoId) ?? registryReader.getByPath(fullPath);
+    // Ordine di lookup:
+    // - se è stato passato un path → prima byPath, poi byId
+    // - altrimenti → prima byId, poi byPath
+    const rec =
+      (target?.photoPath
+        ? registryReader.getByPath(fullPath) ?? (photoId ? registryReader.getByPhotoId(photoId) : undefined)
+        : (photoId ? registryReader.getByPhotoId(photoId) : undefined) ?? registryReader.getByPath(fullPath));
+
     if (rec) {
       current_meta = {
         photoId: rec.photoId,
@@ -263,7 +292,7 @@ async function displayRandomImage(
       };
     } else {
       current_meta = {
-        photoId,
+        photoId: photoId ?? undefined,
         photoPath: fullPath,
         username: "Unknown",
         firstName: "-",
@@ -271,7 +300,7 @@ async function displayRandomImage(
       };
     }
   } catch {
-    // se fallisce, lasciamo undefined
+    // se qualcosa va storto, lasciamo current_meta undefined
   }
 
   // Notifica al consumer (render)
@@ -290,6 +319,7 @@ async function displayRandomImage(
   logger.info(`Displayed: ${fullPath}`);
   return "ok";
 }
+
 
 /** -------------------- Scheduling -------------------- **/
 
@@ -342,7 +372,8 @@ consumeInkyMatteucciEvents(async (event) => {
 
   if (event.type === "request_next") {
     const e = event as RequestNextEvent;
-    const result = await displayRandomImage("manual"); // manual: ignora la notte
+    const result = await displayRandomImage("manual", e.data.target); // manual: ignora la notte
+  
     if (result === "ok") {
       await producer.produceEvent({
         type: "next_result",
