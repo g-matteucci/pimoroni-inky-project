@@ -5,6 +5,8 @@ import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import { getRanking } from "./ranking";
+import { getThanks } from "./thanks";
+
 
 
 import {
@@ -228,7 +230,8 @@ bot.start(async (ctx) => {
     "/start - mostra queste informazioni",
     "(invio foto) - salva una nuova immagine da usare sull’Inky",
     "/current - mostra l'immagine attualmente sull'Inky",
-    "/ranking - mostra la classifica e le statistiche"
+    "/ranking - mostra la classifica e le statistiche",
+    "/thanks - i miei ringraziamenti"
   ];
 
   const commandsPrivate = [
@@ -323,6 +326,13 @@ bot.command("current", async (ctx) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+/** -------------------- /thanks ------------------------- */
+bot.command("thanks", async (ctx) => {
+  const msg = getThanks();
+  await ctx.reply(msg);
+});
+
 
 /** -------------------- /ranking ------------------------- */
 bot.command("ranking", async (ctx) => {
