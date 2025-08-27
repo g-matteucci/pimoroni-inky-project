@@ -4,3 +4,4 @@ node_modules
 playground/
 dump.rdb
 .DS_Store
+.runtime
