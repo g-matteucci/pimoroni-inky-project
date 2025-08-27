@@ -1,12 +1,13 @@
+// commons/src/services/imageStorageService.ts
 import { accessSync, mkdirSync, writeFileSync, unlinkSync, readdirSync } from "fs";
 import path from "path";
-import { LOCAL_STORAGE_PATH } from "../constants.js";
+import { LOCAL_PHOTOS_PATH } from "../constants.js";
 
 export class ImageStorageService {
-  constructor(private storagePath: string = LOCAL_STORAGE_PATH) {
+  constructor(private storagePath: string = LOCAL_PHOTOS_PATH) {
     try {
       accessSync(this.storagePath);
-    } catch (error) {
+    } catch {
       mkdirSync(this.storagePath, { recursive: true });
     }
   }
@@ -22,6 +23,7 @@ export class ImageStorageService {
       accessSync(localFilePath);
       unlinkSync(localFilePath);
     } catch {
+      // già eliminato o inesistente
       return;
     }
   }
