@@ -1,9 +1,20 @@
 {
-  "name": "registry-reconciler",
-  "private": true,
-  "type": "module",
-  "version": "0.0.0",
+  "name": "inky-matteucci-registry-reconciler",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "tsx src/index.ts"
+  },
+  "keywords": [],
+  "author": "g-matteucci",
+  "license": "ISC",
+  "packageManager": "pnpm@10.4.1",
   "dependencies": {
-    "inky-matteucci-commons": "workspace:*"
+    "inky-matteucci-commons": "link:../commons"
+  },
+  "devDependencies": {
+    "@types/node": "^24.1.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
   }
 }
