@@ -4,7 +4,6 @@ import type { Telegraf } from "telegraf";
 
 const reader = new PhotoRegistryReader(REGISTRY_FILE);
 
-// Cache locale per non stressare Telegram API
 const nameCache = new Map<number, string>();
 
 async function resolveDisplayName(
@@ -27,7 +26,7 @@ async function resolveDisplayName(
       return fullname;
     }
   } catch {
-    // se Telegram non risponde → fallback
+    // ignore errors, fallback
   }
 
   if (fallback.username) {
@@ -48,25 +47,27 @@ async function resolveDisplayName(
 
 export async function getRanking(telegram: Telegraf['telegram']): Promise<string> {
   const photos = reader.getAllPhotos();
-
   const total = photos.length;
 
   const cutoff = new Date("2025-08-22T00:00:00Z");
   const originals = photos.filter((p) => p.addedAt && new Date(p.addedAt) < cutoff).length;
 
-  // Conta per userId
+  // conta per userId leggendo da p.telegram
   const counts = new Map<number, { n: number; username?: string; firstName?: string; lastName?: string }>();
   for (const p of photos) {
-    if (p.username === "Origin" || p.username === "Unknown") continue;
-    const id = p.userId;
+    const t = (p as any).telegram;
+    if (!t) continue;
+    if (t.username === "Origin" || t.username === "Unknown") continue;
+
+    const id = t.userId;
     if (!id) continue;
 
     if (!counts.has(id)) {
       counts.set(id, {
         n: 0,
-        username: p.username,
-        firstName: p.firstName,
-        lastName: p.lastName,
+        username: t.username,
+        firstName: t.firstName,
+        lastName: t.lastName,
       });
     }
     counts.get(id)!.n++;
@@ -75,7 +76,6 @@ export async function getRanking(telegram: Telegraf['telegram']): Promise<string
   const sorted = [...counts.entries()].sort((a, b) => b[1].n - a[1].n);
   const top5 = sorted.slice(0, 5);
 
-  // Risolvi i nomi via Telegram API (con fallback)
   const linesTop: string[] = [];
   for (const [uid, data] of top5) {
     const displayName = await resolveDisplayName(telegram, uid, {
