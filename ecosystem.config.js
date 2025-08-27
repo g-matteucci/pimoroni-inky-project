@@ -42,5 +42,15 @@ module.exports = {
 	TELEGRAM_USERS_WHITELIST: process.env.TELEGRAM_USERS_WHITELIST,
       },
     },
+    {
+    name: "registry-reconciler",
+    cwd: "./packages/registry-reconciler",
+    script: "src/index.ts",
+    interpreter: "bun",
+    env: {
+        NODE_ENV: "production",
+        PATH: `${process.env.HOME}/.bun/bin:${process.env.PATH}`,
+    },
+    },
   ],
 };

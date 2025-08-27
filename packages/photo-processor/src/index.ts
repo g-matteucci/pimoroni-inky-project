@@ -1,33 +1,85 @@
-import { consumeInkyMatteucciEvents, ImageStorageService, LoggerService } from "inky-matteucci-commons";
+// packages/photo-processor/src/index.ts
+import fs from "fs";
 import sharp from "sharp";
 import { match } from "ts-pattern";
+import {
+  consumeInkyMatteucciEvents,
+  ImageStorageService,
+  LoggerService,
+  PhotoRegistryService,
+} from "inky-matteucci-commons";
 
-const imageStorageService = new ImageStorageService();
 const logger = new LoggerService("photo-processor");
+const imageStorageService = new ImageStorageService();
+const registry = new PhotoRegistryService();
 
 logger.info("Starting image manager consumer...");
 
 consumeInkyMatteucciEvents((event) => {
   match(event)
     .with({ type: "added_photo" }, async (e) => {
-      logger.info("Adding photo:", e.data.photoId);
-      const response = await fetch(e.data.photoUrl);
-      const buffer = Buffer.from(await response.arrayBuffer());
+      const { photoId, photoUrl, chatId, userId, username, firstName, lastName, timestamp } = e.data;
+      logger.info(`Adding photo: ${photoId}`);
 
-      const optimizedImage = await sharp(buffer)
-        .resize({ width: 800, height: 600, fit: "contain" })
-        .jpeg({ quality: 50 })
-        .toBuffer();
+      try {
+        const resp = await fetch(photoUrl);
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status} while fetching ${photoUrl}`);
+        }
+        const ct = resp.headers.get("content-type") ?? "";
+        if (!/^image\//i.test(ct)) {
+          throw new Error(`Unexpected content-type "${ct}" for ${photoUrl}`);
+        }
 
-      imageStorageService.saveImage(e.data.photoId, optimizedImage);
-      logger.info(`Photo saved for ${e.data.photoId}`);
+        const srcBuffer = Buffer.from(await resp.arrayBuffer());
+
+        const optimizedImage = await sharp(srcBuffer)
+          .resize({ width: 800, height: 600, fit: "contain", withoutEnlargement: true })
+          .jpeg({ quality: 50 })
+          .toBuffer();
+
+        // Salva su disco
+        imageStorageService.saveImage(photoId, optimizedImage);
+        const absPath = imageStorageService.getFileFullPath(photoId);
+        const st = fs.statSync(absPath);
+
+        // Append nel registro JSONL (writer unico)
+        registry.appendPhoto({
+          basename: photoId,           // es. "AgAC..."
+          absPath,
+          bytes: st.size,
+          telegram: {
+            chatId,
+            userId,
+            username,
+            firstName,
+            lastName,
+            timestamp,                // ISO dal bot
+          },
+          // addedAtIso: default = now
+        });
+
+        logger.info(`Photo saved & registered: ${photoId}`);
+      } catch (err) {
+        logger.error(`Failed to add ${photoId}: ${(err as Error).message}`);
+      }
     })
     .with({ type: "removed_photo" }, (e) => {
-      logger.info("Removing photo:", e.data.photoId);
-      imageStorageService.deleteImage(e.data.photoId);
-      logger.info(`Photo deleted: ${e.data.photoId}`);
+      const { photoId } = e.data;
+      logger.info(`Removing photo: ${photoId}`);
+
+      try {
+        imageStorageService.deleteImage(photoId);
+
+        // Tombstone nel registro
+        registry.appendTombstone(photoId);
+
+        logger.info(`Photo deleted & tombstoned: ${photoId}`);
+      } catch (err) {
+        logger.error(`Failed to remove ${photoId}: ${(err as Error).message}`);
+      }
     })
-    // Do nothing
+    // Eventi non di interesse per questo servizio
     .with({ type: "display_photo" }, () => {})
     .exhaustive();
 });
