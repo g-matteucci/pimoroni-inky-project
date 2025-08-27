@@ -404,7 +404,7 @@ consumeInkyMatteucciEvents(async (event) => {
     if (p && fs.existsSync(p)) {
       // Prepara meta da inviare (preferisci lo state, altrimenti ricava ora)
       let meta:
-        | { photoId?: string; username?: string; firstName?: string; lastName?: string; timestamp?: string }
+        | { photoId?: string; userId?: number; username?: string; firstName?: string; lastName?: string; timestamp?: string }
         | undefined = state.current_meta;
 
       if (!meta) {
@@ -415,6 +415,7 @@ consumeInkyMatteucciEvents(async (event) => {
           if (rec) {
             meta = {
               photoId: rec.photoId,
+              userId: rec.telegram?.userId,
               username: rec.telegram?.username,
               firstName: rec.telegram?.firstName,
               lastName: rec.telegram?.lastName,

@@ -54,6 +54,36 @@ function formatDateOnly(iso?: string): string {
   return d.toLocaleDateString("it-IT", { year: "numeric", month: "long", day: "numeric" });
 }
 
+async function resolveUserTag(
+  telegram: Telegraf['telegram'],
+  userId?: number,
+  fallback?: { username?: string; firstName?: string; lastName?: string }
+): Promise<string> {
+  // 1) Prova a interrogare Telegram se ho l'ID
+  if (typeof userId === "number" && Number.isFinite(userId)) {
+    try {
+      const chat: any = await telegram.getChat(userId);
+      if (chat?.username && typeof chat.username === "string" && chat.username.trim()) {
+        return chat.username.startsWith("@") ? chat.username : `@${chat.username}`;
+      }
+      const name = [chat?.first_name, chat?.last_name].filter(Boolean).join(" ").trim();
+      if (name) return name;
+    } catch {
+      // Ignora gli errori e passa al fallback
+    }
+  }
+
+  // 2) Fallback: se ho uno username legacy, prefissa @
+  const u = (fallback?.username ?? "").trim();
+  if (u) return u.startsWith("@") ? u : `@${u}`;
+
+  // 3) Fallback: nome e cognome legacy
+  const name = [fallback?.firstName, fallback?.lastName].filter(Boolean).join(" ").trim();
+  if (name) return name;
+
+  return "unknown";
+}
+
 
 /** -------------------- Whitelist -------------------- **/
 
@@ -169,7 +199,7 @@ bot.on(message("photo"), async (ctx) => {
   });
 
   await ctx.reply(
-    "Ricevuto! La tua foto è stata salvata e sarà pronta per essere mostrata sull'Inky."
+    "Ricevuto! La tua foto è stata salvata e sarà mostrata randomicamente sull'Inky."
   );
 });
 
@@ -305,7 +335,7 @@ consumeInkyMatteucciEvents(async (event) => {
       if (noImages) {
         await bot.telegram.sendMessage(chatId, "Nessuna immagine disponibile al momento.");
       } else if (ok) {
-        await bot.telegram.sendMessage(chatId, "Ok, a breve l'immagine dovrebbe cambiare (pochi secondi...)");
+        await bot.telegram.sendMessage(chatId, "Ok, a breve l'immagine dovrebbe cambiare (una decina di secondi...)");
       } else if (typeof msRemaining === "number") {
         await bot.telegram.sendMessage(
           chatId,
@@ -316,56 +346,71 @@ consumeInkyMatteucciEvents(async (event) => {
     }
 
     case "current_result": {
-      const { chatId, ok, noImages, photoUrl } = event.data as {
+    const { chatId, ok, noImages, photoUrl } = event.data as {
         chatId: number; ok?: boolean; noImages?: boolean; photoUrl?: string;
-      };
-      logger.info(
+    };
+    logger.info(
         `EVENT current_result: chat=${chatId} ok=${ok} noImages=${noImages} photoUrl=${photoUrl ?? "-"}`
-      );
+    );
 
-      if (noImages) {
+    if (noImages) {
         await bot.telegram.sendMessage(chatId, "Nessuna immagine disponibile al momento.");
         return;
-      }
+    }
 
-      if (ok && photoUrl) {
+    if (ok && photoUrl) {
         await bot.telegram.sendMessage(chatId, "Questa è l'immagine attualmente sull'Inky");
         try {
-            if (/^https?:\/\//i.test(photoUrl)) {
+        if (/^https?:\/\//i.test(photoUrl)) {
             await bot.telegram.sendPhoto(chatId, { url: photoUrl });
-            } else {
+        } else {
             await bot.telegram.sendPhoto(chatId, { source: fs.createReadStream(photoUrl) });
-            }
+        }
         } catch (err) {
-            logger.error(`Failed to send current photo "${photoUrl}": ${(err as Error).message}`);
-            await bot.telegram.sendMessage(chatId, "Non riesco a leggere l'immagine corrente dal server.");
+        logger.error(`Failed to send current photo "${photoUrl}": ${(err as Error).message}`);
+        await bot.telegram.sendMessage(chatId, "Non riesco a leggere l'immagine corrente dal server.");
+        return;
+        }
+
+        // ------- Nuova risoluzione del nome mittente -------
+        const meta = (event as any).data?.meta as
+        | { userId?: number; username?: string; firstName?: string; lastName?: string; timestamp?: string }
+        | undefined;
+
+        // Gestione dei casi speciali già presenti
+        const uLegacy = (meta?.username ?? "").trim();
+        if (uLegacy === "Origin") {
+        await bot.telegram.sendMessage(chatId, "Una delle foto originali mandata per il Pechia 2025!");
+        return;
+        }
+        if (!uLegacy || uLegacy === "Unknown") {
+        // Prova comunque a risolvere da userId; se non riesce, mantieni messaggio “mistero…”
+        const tag = await resolveUserTag(bot.telegram, meta?.userId, { username: uLegacy });
+        if (tag === "mittente sconosciuto") {
+            await bot.telegram.sendMessage(chatId, "Foto da mittente sconosciuto (mistero...)");
             return;
         }
-
-        // Messaggio finale basato su meta
-        const meta = (event as any).data?.meta as
-            | { username?: string; timestamp?: string }
-            | undefined;
-
-        const u = (meta?.username ?? "").trim();
-        if (u === "Origin") {
-            await bot.telegram.sendMessage(chatId, "Foto originale mandata per il Pechia 2025!");
-        } else if (!u || u === "Unknown") {
-            await bot.telegram.sendMessage(chatId, "Foto da mittente sconosciuto (mistero...)");
-        } else {
-            const when = formatDateOnly(meta?.timestamp);
-            await bot.telegram.sendMessage(
-            chatId,
-            `Foto mandata da ${u}${when ? ` in data ${when}!` : "!"}`
-            );
-        }
+        const when = formatDateOnly(meta?.timestamp);
+        await bot.telegram.sendMessage(chatId, `Foto mandata da ${tag}${when ? ` in data ${when}!` : "!"}`);
         return;
-      }
+        }
 
-      // Fallback
-      await bot.telegram.sendMessage(chatId, "Nessuna immagine disponibile al momento.");
-      return;
+        // Caso generale: risolvi usando userId se disponibile, altrimenti fallback a username/nome
+        const tag = await resolveUserTag(bot.telegram, meta?.userId, {
+        username: meta?.username,
+        firstName: meta?.firstName,
+        lastName: meta?.lastName,
+        });
+        const when = formatDateOnly(meta?.timestamp);
+        await bot.telegram.sendMessage(chatId, `Foto mandata da ${tag}${when ? ` in data ${when}!` : "!"}`);
+        return;
     }
+
+    // Fallback
+    await bot.telegram.sendMessage(chatId, "Nessuna immagine disponibile al momento.");
+    return;
+    }
+
 
     default:
       // altri eventi non gestiti qui

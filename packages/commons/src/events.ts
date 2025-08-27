@@ -104,15 +104,17 @@ export const CurrentResultEvent = z.object({
     photoUrl: z.string().optional(),
     meta: z.object({
       photoId: z.string().optional(),
+      userId: z.number().optional(),      
       username: z.string().optional(),
       firstName: z.string().optional(),
       lastName: z.string().optional(),
-      timestamp: z.string().optional(), // ISO
+      timestamp: z.string().optional(),   // ISO
     }).optional(),
   }),
   timestamp: z.string(),
 });
 export type CurrentResultEvent = z.infer<typeof CurrentResultEvent>;
+
 
 
 /* --- Updated event union --- */
