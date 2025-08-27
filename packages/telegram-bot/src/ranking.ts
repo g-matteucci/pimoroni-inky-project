@@ -1,6 +1,5 @@
 // packages/telegram-bot/src/ranking.ts
-import { PhotoRegistryReader } from "inky-matteucci-commons";
-import { REGISTRY_FILE } from "inky-matteucci-commons/constants.js";
+import { REGISTRY_FILE, PhotoRegistryReader } from "inky-matteucci-commons";
 
 const reader = new PhotoRegistryReader(REGISTRY_FILE);
 
