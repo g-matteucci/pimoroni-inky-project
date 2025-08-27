@@ -4,7 +4,17 @@ import type { Telegraf } from "telegraf";
 
 const reader = new PhotoRegistryReader(REGISTRY_FILE);
 
+// Cache per i nomi risolti via Telegram API
 const nameCache = new Map<number, string>();
+
+function isOriginal(p: any): boolean {
+  const t = p?.telegram ?? {};
+  const uid = Number(t.userId);
+  const uname = String(t.username ?? "").trim().toLowerCase();
+  // Alcune originali sono (userId=0, username='Origin'),
+  // altre (userId=0, username='Unknown'). Consideriamo OR.
+  return uid === 0 || uname === "origin" || uname === "unknown";
+}
 
 async function resolveDisplayName(
   telegram: Telegraf['telegram'],
@@ -26,10 +36,10 @@ async function resolveDisplayName(
       return fullname;
     }
   } catch {
-    // ignore errors, fallback
+    // ignore → fallback
   }
 
-  if (fallback.username) {
+  if (fallback.username && !/^origin|unknown$/i.test(fallback.username)) {
     const uname = fallback.username.startsWith("@") ? fallback.username : `@${fallback.username}`;
     nameCache.set(userId, uname);
     return uname;
@@ -47,20 +57,21 @@ async function resolveDisplayName(
 
 export async function getRanking(telegram: Telegraf['telegram']): Promise<string> {
   const photos = reader.getAllPhotos();
+
   const total = photos.length;
 
-  const cutoff = new Date("2025-08-22T00:00:00Z");
-  const originals = photos.filter((p) => p.addedAt && new Date(p.addedAt) < cutoff).length;
+  // Originali = userId==0 o username Origin/Unknown (non per data)
+  const originals = photos.filter((p) => isOriginal(p)).length;
 
-  // conta per userId leggendo da p.telegram
+  // Conta per userId (escludendo le originali)
   const counts = new Map<number, { n: number; username?: string; firstName?: string; lastName?: string }>();
   for (const p of photos) {
     const t = (p as any).telegram;
     if (!t) continue;
-    if (t.username === "Origin" || t.username === "Unknown") continue;
+    if (isOriginal(p)) continue;
 
-    const id = t.userId;
-    if (!id) continue;
+    const id = Number(t.userId);
+    if (!Number.isFinite(id)) continue;
 
     if (!counts.has(id)) {
       counts.set(id, {
