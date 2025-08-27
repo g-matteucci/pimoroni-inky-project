@@ -13,7 +13,11 @@ const logger = new LoggerService("photo-processor");
 const imageStorageService = new ImageStorageService();
 const registry = new PhotoRegistryService();
 
-// ---- Helper: render compromesso 800x480 ----
+/** Helper: render “compromesso” 800x480
+ *  - Se le barre sarebbero piccole (≤10%), usa contain (niente crop).
+ *  - Se sarebbero enormi (≥30%), usa cover (croppa).
+ *  - Nel mezzo, “over-zoom” controllato + canvas 800x480 con bg.
+ */
 async function renderForInkyCompromise(
   srcBuffer: Buffer,
   opts?: { bg?: { r: number; g: number; b: number }; quality?: number }
@@ -26,10 +30,17 @@ async function renderForInkyCompromise(
   const meta = await sharp(srcBuffer).metadata();
   const w = meta.width ?? TARGET_W;
   const h = meta.height ?? TARGET_H;
+
   if (w <= 0 || h <= 0) {
-    // fallback robusto: contain
+    // fallback robusto
     return sharp(srcBuffer)
-      .resize({ width: TARGET_W, height: TARGET_H, fit: "contain", background: { ...BG, alpha: 1 }, withoutEnlargement: true })
+      .resize({
+        width: TARGET_W,
+        height: TARGET_H,
+        fit: "contain",
+        background: { ...BG, alpha: 1 },
+        withoutEnlargement: true,
+      })
       .jpeg({ quality: QUALITY })
       .toBuffer();
   }
@@ -39,52 +50,55 @@ async function renderForInkyCompromise(
   const scaledH = Math.floor(h * scaleContain);
   const padX = Math.max(0, TARGET_W - scaledW);
   const padY = Math.max(0, TARGET_H - scaledH);
-  const padRatio = Math.max(padX / TARGET_W, padY / TARGET_H); // quota della dimensione coperta da barre
+  const padRatio = Math.max(padX / TARGET_W, padY / TARGET_H);
 
-  // Soglie regolabili
   const SMALL_BAR = 0.10; // ≤10% ⇒ contain
   const BIG_BAR   = 0.30; // ≥30% ⇒ cover
 
   if (padRatio <= SMALL_BAR) {
-    // Barre piccole: mostriamo tutto, padding minimo
     return sharp(srcBuffer)
-      .resize({ width: TARGET_W, height: TARGET_H, fit: "contain", background: { ...BG, alpha: 1 }, withoutEnlargement: true })
+      .resize({
+        width: TARGET_W,
+        height: TARGET_H,
+        fit: "contain",
+        background: { ...BG, alpha: 1 },
+        withoutEnlargement: true,
+      })
       .jpeg({ quality: QUALITY })
       .toBuffer();
   }
 
   if (padRatio >= BIG_BAR) {
-    // Barre enormi: meglio riempire con taglio (crop), ma poco "intelligente"
     return sharp(srcBuffer)
-      .resize({ width: TARGET_W, height: TARGET_H, fit: "cover", position: "attention", withoutEnlargement: true })
+      .resize({
+        width: TARGET_W,
+        height: TARGET_H,
+        fit: "cover",
+        position: "attention",
+        withoutEnlargement: true,
+      })
       .jpeg({ quality: QUALITY })
       .toBuffer();
   }
 
-  // Compromesso: riduci le barre sotto ~10% senza arrivare al crop pieno
-  const targetRatio = TARGET_W / TARGET_H; // ~1.666...
+  // zona “compromesso”
+  const targetRatio = TARGET_W / TARGET_H;
   const ratio = w / h;
-  const desiredMaxPad = SMALL_BAR; // vogliamo ~≤10% barra max
+  const desiredMaxPad = SMALL_BAR;
 
-  // Calcola uno scale "over-zoom" limitato tra contain e cover
   let s = scaleContain;
   if (ratio < targetRatio) {
-    // Immagine più "stretta" → barre verticali a sinistra/destra.
-    // Servono più px in larghezza: newW = h*s*ratio >= TARGET_W*(1 - desiredMaxPad)
     const minW = TARGET_W * (1 - desiredMaxPad);
     const sForMinW = minW / (h * ratio);
-    const coverScale = TARGET_H / h; // upper bound (equivale a cover)
+    const coverScale = TARGET_H / h;
     s = Math.min(coverScale, Math.max(scaleContain, sForMinW));
   } else {
-    // Immagine più "larga" → barre orizzontali sopra/sotto.
-    // Serve più altezza: newH = h*s >= TARGET_H*(1 - desiredMaxPad)
     const minH = TARGET_H * (1 - desiredMaxPad);
     const sForMinH = minH / h;
-    const coverScale = TARGET_W / w; // upper bound
+    const coverScale = TARGET_W / w;
     s = Math.min(coverScale, Math.max(scaleContain, sForMinH));
   }
 
-  // Ridimensiona con 'inside' (niente taglio), poi centriamo su canvas 800x480
   const resized = await sharp(srcBuffer)
     .resize({
       width: Math.round(w * s),
@@ -123,9 +137,9 @@ consumeInkyMatteucciEvents((event) => {
 
         const srcBuffer = Buffer.from(await resp.arrayBuffer());
 
-        // ✨ Usa il renderer “compromesso”
+        // renderer “compromesso”
         const optimizedImage = await renderForInkyCompromise(srcBuffer, {
-          bg: { r: 255, g: 255, b: 255 }, // sfondo bianco per barre
+          bg: { r: 255, g: 255, b: 255 },
           quality: 50,
         });
 
@@ -161,16 +175,12 @@ consumeInkyMatteucciEvents((event) => {
 
       try {
         imageStorageService.deleteImage(photoId);
-
-        // Tombstone nel registro
         registry.appendTombstone(photoId);
-
         logger.info(`Photo deleted & tombstoned: ${photoId}`);
       } catch (err) {
         logger.error(`Failed to remove ${photoId}: ${(err as Error).message}`);
       }
     })
-    // Eventi non di interesse per questo servizio
-    .with({ type: "display_photo" }, () => {})
-    .exhaustive();
+    // altri eventi non pertinenti: ignora senza errori
+    .otherwise(() => {});
 });
