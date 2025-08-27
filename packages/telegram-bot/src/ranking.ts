@@ -1,40 +1,97 @@
-// packages/telegram-bot/src/ranking.ts
-import { REGISTRY_FILE, PhotoRegistryReader } from "inky-matteucci-commons";
+// packages/bot/src/ranking.ts
+import { PhotoRegistryReader, REGISTRY_FILE } from "inky-matteucci-commons";
+import type { Telegraf } from "telegraf";
 
 const reader = new PhotoRegistryReader(REGISTRY_FILE);
 
-export function getRanking(): string {
+// Cache locale per non stressare Telegram API
+const nameCache = new Map<number, string>();
+
+async function resolveDisplayName(
+  telegram: Telegraf['telegram'],
+  userId: number,
+  fallback: { username?: string; firstName?: string; lastName?: string }
+): Promise<string> {
+  if (nameCache.has(userId)) return nameCache.get(userId)!;
+
+  try {
+    const chat: any = await telegram.getChat(userId);
+    if (chat?.username) {
+      const uname = chat.username.startsWith("@") ? chat.username : `@${chat.username}`;
+      nameCache.set(userId, uname);
+      return uname;
+    }
+    const fullname = [chat?.first_name, chat?.last_name].filter(Boolean).join(" ").trim();
+    if (fullname) {
+      nameCache.set(userId, fullname);
+      return fullname;
+    }
+  } catch {
+    // se Telegram non risponde → fallback
+  }
+
+  if (fallback.username) {
+    const uname = fallback.username.startsWith("@") ? fallback.username : `@${fallback.username}`;
+    nameCache.set(userId, uname);
+    return uname;
+  }
+  const fullname = [fallback.firstName, fallback.lastName].filter(Boolean).join(" ").trim();
+  if (fullname) {
+    nameCache.set(userId, fullname);
+    return fullname;
+  }
+
+  const generic = `utente ${userId}`;
+  nameCache.set(userId, generic);
+  return generic;
+}
+
+export async function getRanking(telegram: Telegraf['telegram']): Promise<string> {
   const photos = reader.getAllPhotos();
 
   const total = photos.length;
 
-  // Foto "originali" prima del 22 agosto 2025
   const cutoff = new Date("2025-08-22T00:00:00Z");
-  const originals = photos.filter((p) => {
-    if (!p.addedAt) return false;
-    return new Date(p.addedAt) < cutoff;
-  }).length;
+  const originals = photos.filter((p) => p.addedAt && new Date(p.addedAt) < cutoff).length;
 
-  // Conta per utente, ignorando Origin e Unknown
-  const counts = new Map<string, number>();
+  // Conta per userId
+  const counts = new Map<number, { n: number; username?: string; firstName?: string; lastName?: string }>();
   for (const p of photos) {
-    const u = (p.username ?? "").trim();
-    if (u === "Origin" || u === "Unknown") continue;
+    if (p.username === "Origin" || p.username === "Unknown") continue;
+    const id = p.userId;
+    if (!id) continue;
 
-    const key = u || `id:${p.userId ?? "?"}`;
-    counts.set(key, (counts.get(key) ?? 0) + 1);
+    if (!counts.has(id)) {
+      counts.set(id, {
+        n: 0,
+        username: p.username,
+        firstName: p.firstName,
+        lastName: p.lastName,
+      });
+    }
+    counts.get(id)!.n++;
   }
 
-  // Ordina e prendi top 5
-  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const sorted = [...counts.entries()].sort((a, b) => b[1].n - a[1].n);
   const top5 = sorted.slice(0, 5);
+
+  // Risolvi i nomi via Telegram API (con fallback)
+  const linesTop: string[] = [];
+  for (const [uid, data] of top5) {
+    const displayName = await resolveDisplayName(telegram, uid, {
+      username: data.username,
+      firstName: data.firstName,
+      lastName: data.lastName,
+    });
+    linesTop.push(`- ${displayName} (${data.n} foto)`);
+  }
 
   const lines = [
     `In totale nell'Inky sono registrate ${total} foto!`,
     `Di queste, ${originals} sono le foto originali inviate prima del Pechia 2025.`,
     "",
     "La top five (a partire dal 22 agosto 25):",
-    ...top5.map(([user, n]) => `- ${user.startsWith("@") ? user : "@" + user} (${n} foto)`),
+    ...linesTop,
     "",
     "Grazie mille per tutte le fotine mandate :)",
   ];

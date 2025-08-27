@@ -326,7 +326,7 @@ bot.command("current", async (ctx) => {
 
 /** -------------------- /ranking ------------------------- */
 bot.command("ranking", async (ctx) => {
-  const msg = getRanking();
+  const msg = await getRanking(bot.telegram);
   await ctx.reply(msg);
 });
 
