@@ -3,3 +3,4 @@ export * from "./events.js";
 export * from "./services/imageStorageService.js";
 export * from "./services/loggerService.js";
 export * from "./services/photoRegistryService.js";
+export * from "./services/photoRegistryReader.js";

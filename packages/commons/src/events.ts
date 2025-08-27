@@ -97,7 +97,14 @@ export const CurrentResultEvent = z.object({
     chatId: z.number(),
     ok: z.boolean().optional(),
     noImages: z.boolean().optional(),
-    photoUrl: z.string().optional(), // path locale o URL
+    photoUrl: z.string().optional(),
+    meta: z.object({
+      photoId: z.string().optional(),
+      username: z.string().optional(),
+      firstName: z.string().optional(),
+      lastName: z.string().optional(),
+      timestamp: z.string().optional(), // ISO
+    }).optional(),
   }),
   timestamp: z.string(),
 });

@@ -48,6 +48,13 @@ function msToHuman(ms: number) {
   return `${m}m ${r}s`;
 }
 
+function formatDateOnly(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleDateString("it-IT", { year: "numeric", month: "long", day: "numeric" });
+}
+
+
 /** -------------------- Whitelist -------------------- **/
 
 function parseWhitelist(raw: string | undefined): Set<number> {
@@ -305,14 +312,33 @@ consumeInkyMatteucciEvents(async (event) => {
       if (ok && photoUrl) {
         await bot.telegram.sendMessage(chatId, "Questa è l'immagine attualmente sull'Inky");
         try {
-          if (/^https?:\/\//i.test(photoUrl)) {
+            if (/^https?:\/\//i.test(photoUrl)) {
             await bot.telegram.sendPhoto(chatId, { url: photoUrl });
-          } else {
+            } else {
             await bot.telegram.sendPhoto(chatId, { source: fs.createReadStream(photoUrl) });
-          }
+            }
         } catch (err) {
-          logger.error(`Failed to send current photo "${photoUrl}": ${(err as Error).message}`);
-          await bot.telegram.sendMessage(chatId, "Non riesco a leggere l'immagine corrente dal server.");
+            logger.error(`Failed to send current photo "${photoUrl}": ${(err as Error).message}`);
+            await bot.telegram.sendMessage(chatId, "Non riesco a leggere l'immagine corrente dal server.");
+            return;
+        }
+
+        // Messaggio finale basato su meta
+        const meta = (event as any).data?.meta as
+            | { username?: string; timestamp?: string }
+            | undefined;
+
+        const u = (meta?.username ?? "").trim();
+        if (u === "Origin") {
+            await bot.telegram.sendMessage(chatId, "Foto originale mandata per il Pechia 2025!");
+        } else if (!u || u === "Unknown") {
+            await bot.telegram.sendMessage(chatId, "Foto da mittente sconosciuto (mistero...)");
+        } else {
+            const when = formatDateOnly(meta?.timestamp);
+            await bot.telegram.sendMessage(
+            chatId,
+            `Foto mandata da ${u}${when ? ` in data ${when}!` : "!"}`
+            );
         }
         return;
       }

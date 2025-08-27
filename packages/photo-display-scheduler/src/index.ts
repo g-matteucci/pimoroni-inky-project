@@ -7,6 +7,7 @@ import {
   LoggerService,
   RequestNextEvent,
   SetShuffleEvent,
+  PhotoRegistryReader,
 } from "inky-matteucci-commons";
 
 /** -------------------- types -------------------- **/
@@ -19,14 +20,26 @@ type AppConfig = {
   night_time_end?: string;        // "HH:mm" (24h)
 };
 
+type CurrentMeta = {
+  photoId?: string;
+  photoPath?: string;
+  userId?: number;
+  username?: string;
+  firstName?: string;
+  lastName?: string;
+  timestamp?: string;
+};
+
 type AppState = {
-  last_display_at?: string;       // ISO last successful rotation (volatile)
-  current_photo_url?: string;     // ultimo path/URL mostrato (volatile)
+  last_display_at?: string;
+  current_photo_url?: string;
+  current_meta?: CurrentMeta;
 };
 
 /** -------------------- Setup -------------------- **/
 
 const logger = new LoggerService("photo-display-scheduler");
+const registryReader = new PhotoRegistryReader();
 const producer = createInkyMatteucciEventProducer();
 const storage = new ImageStorageService();
 
@@ -70,10 +83,8 @@ function clampConfig(cfg: AppConfig): AppConfig {
   if (!Number.isFinite(default_shuffle_time) || default_shuffle_time <= 0) default_shuffle_time = 5;
   if (default_shuffle_time < min_shuffle_time) default_shuffle_time = min_shuffle_time;
 
-  // defaults for night pause
   if (typeof disable_during_night !== "boolean") disable_during_night = false;
 
-  // validate HH:mm (24h). If invalid, fall back to 03:00→09:00.
   if (!isValidHM(night_time_start)) night_time_start = "03:00";
   if (!isValidHM(night_time_end))   night_time_end   = "09:00";
 
@@ -95,7 +106,6 @@ function defaultConfig(): AppConfig {
     night_time_end: "09:00",
   };
 }
-
 
 function loadConfig(): AppConfig {
   try {
@@ -133,7 +143,6 @@ function loadState(): AppState {
       if (typeof parsed?.current_photo_url === "string") migratable.current_photo_url = parsed.current_photo_url;
       const st = { ...defaultState(), ...migratable };
       saveState(st);
-      // rimuovi le chiavi migrate dal config e risalva
       if ("last_display_at" in parsed || "current_photo_url" in parsed) {
         delete parsed.last_display_at;
         delete parsed.current_photo_url;
@@ -164,20 +173,17 @@ function minutesSinceMidnight(d = new Date()): number {
 
 // Is `nowMin` inside [start, end) with wrap-around support
 function inWindow(nowMin: number, startMin: number, endMin: number): boolean {
-  if (startMin === endMin) return false;           // empty window (treat as disabled)
+  if (startMin === endMin) return false;
   if (startMin < endMin) return nowMin >= startMin && nowMin < endMin;
-  // crosses midnight
-  return nowMin >= startMin || nowMin < endMin;
+  return nowMin >= startMin || nowMin < endMin; // crosses midnight
 }
 
 // Minutes left until window end (0 if we're not inside)
 function minutesUntilWindowEnd(nowMin: number, startMin: number, endMin: number): number {
   if (!inWindow(nowMin, startMin, endMin)) return 0;
   if (startMin < endMin) return endMin - nowMin;
-  // crosses midnight
   return nowMin < endMin ? (endMin - nowMin) : (24 * 60 - nowMin) + endMin;
 }
-
 
 /** -------------------- Runtime status -------------------- **/
 
@@ -211,13 +217,11 @@ const picker = new HistoryRandomPickerService<string>(() => storage.listImages()
 function canShuffleNow(
   source: "schedule" | "manual"
 ): { allowed: true } | { allowed: false; msRemaining: number } {
-  // 1) Gate: min change between switches
   const minMs = minutesToMs(config.min_shuffle_time);
   const last = state.last_display_at ? new Date(state.last_display_at).getTime() : 0;
   const delta = Date.now() - last;
   const msToMinGate = Math.max(0, minMs - delta);
 
-  // 2) Gate: night time pause (only for scheduled events)
   let msToNightEnd = 0;
   if (source === "schedule" && config.disable_during_night) {
     const nowMin = minutesSinceMidnight();
@@ -231,25 +235,56 @@ function canShuffleNow(
   return waitMs <= 0 ? { allowed: true } : { allowed: false, msRemaining: waitMs };
 }
 
-
 async function displayRandomImage(
   source: "schedule" | "manual"
 ): Promise<"ok" | "noImages" | { waitMs: number }> {
   const gate = canShuffleNow(source);
   if (!gate.allowed) return { waitMs: gate.msRemaining };
+
   const choice = picker.pick();
   if (!choice) return "noImages";
 
   const fullPath = storage.getFileFullPath(choice);
+  const photoId = choice.endsWith(".jpg") ? choice.slice(0, -4) : choice;
 
+  // Meta corrente dal registry (fallback Unknown)
+  let current_meta: CurrentMeta | undefined;
+  try {
+    const rec = registryReader.getByPhotoId(photoId) ?? registryReader.getByPath(fullPath);
+    if (rec) {
+      current_meta = {
+        photoId: rec.photoId,
+        photoPath: rec.storage?.path ?? fullPath,
+        userId: rec.telegram?.userId,
+        username: rec.telegram?.username,
+        firstName: rec.telegram?.firstName,
+        lastName: rec.telegram?.lastName,
+        timestamp: rec.telegram?.timestamp,
+      };
+    } else {
+      current_meta = {
+        photoId,
+        photoPath: fullPath,
+        username: "Unknown",
+        firstName: "-",
+        lastName: "-",
+      };
+    }
+  } catch {
+    // se fallisce, lasciamo undefined
+  }
+
+  // Notifica al consumer (render)
   await producer.produceEvent({
     type: "display_photo",
     data: { photoUrl: fullPath },
     timestamp: new Date().toISOString(),
   });
 
+  // Aggiorna lo state
   state.last_display_at = new Date().toISOString();
   state.current_photo_url = fullPath;
+  state.current_meta = current_meta;
   saveState(state);
 
   logger.info(`Displayed: ${fullPath}`);
@@ -266,8 +301,6 @@ function reschedule() {
   if (wakeTimeout) clearTimeout(wakeTimeout);
 
   const every = minutesToMs(config.default_shuffle_time);
-
-  // default: primo tick fra "every"
   let firstDelay = every;
 
   if (config.disable_during_night) {
@@ -276,7 +309,7 @@ function reschedule() {
     const endMin   = parseHMToMinutes(config.night_time_end!);
     const minsLeft = minutesUntilWindowEnd(nowMin, startMin, endMin);
     if (minsLeft > 0) {
-      firstDelay = minutesToMs(minsLeft); // sveglia esatta a fine notte
+      firstDelay = minutesToMs(minsLeft);
       logger.info(`Night pause active. Next automatic switch in ${Math.ceil(firstDelay/60000)} min.`);
     }
   }
@@ -309,28 +342,28 @@ consumeInkyMatteucciEvents(async (event) => {
 
   if (event.type === "request_next") {
     const e = event as RequestNextEvent;
-    const result = await displayRandomImage("manual"); // <--- manual: ignora la notte
+    const result = await displayRandomImage("manual"); // manual: ignora la notte
     if (result === "ok") {
-        await producer.produceEvent({
+      await producer.produceEvent({
         type: "next_result",
         data: { chatId: e.data.chatId, ok: true },
         timestamp: new Date().toISOString(),
-        });
+      });
     } else if (result === "noImages") {
-        await producer.produceEvent({
+      await producer.produceEvent({
         type: "next_result",
         data: { chatId: e.data.chatId, ok: false, noImages: true },
         timestamp: new Date().toISOString(),
-        });
+      });
     } else {
-        await producer.produceEvent({
+      await producer.produceEvent({
         type: "next_result",
         data: { chatId: e.data.chatId, ok: false, msRemaining: result.waitMs },
         timestamp: new Date().toISOString(),
-        });
+      });
     }
     return;
-    }
+  }
 
   if (event.type === "request_current") {
     const { chatId } = event.data as { chatId: number };
@@ -338,9 +371,33 @@ consumeInkyMatteucciEvents(async (event) => {
     logger.info(`request_current: chat=${chatId} current=${p ?? "-"}`);
 
     if (p && fs.existsSync(p)) {
+      // Prepara meta da inviare (preferisci lo state, altrimenti ricava ora)
+      let meta:
+        | { photoId?: string; username?: string; firstName?: string; lastName?: string; timestamp?: string }
+        | undefined = state.current_meta;
+
+      if (!meta) {
+        try {
+          const base = p.toLowerCase().endsWith(".jpg") ? p.slice(0, -4) : p;
+          const basename = base.split(/[\\/]/).pop()!;
+          const rec = registryReader.getByPath(p) || registryReader.getByPhotoId(basename);
+          if (rec) {
+            meta = {
+              photoId: rec.photoId,
+              username: rec.telegram?.username,
+              firstName: rec.telegram?.firstName,
+              lastName: rec.telegram?.lastName,
+              timestamp: rec.telegram?.timestamp,
+            };
+          } else {
+            meta = { photoId: basename, username: "Unknown" };
+          }
+        } catch { /* ignore */ }
+      }
+
       await producer.produceEvent({
         type: "current_result",
-        data: { chatId, ok: true, photoUrl: p },
+        data: { chatId, ok: true, photoUrl: p, meta },
         timestamp: new Date().toISOString(),
       });
     } else {
