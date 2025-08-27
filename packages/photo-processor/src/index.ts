@@ -26,10 +26,6 @@ consumeInkyMatteucciEvents((event) => {
         if (!resp.ok) {
           throw new Error(`HTTP ${resp.status} while fetching ${photoUrl}`);
         }
-        const ct = resp.headers.get("content-type") ?? "";
-        if (!/^image\//i.test(ct)) {
-          throw new Error(`Unexpected content-type "${ct}" for ${photoUrl}`);
-        }
 
         const srcBuffer = Buffer.from(await resp.arrayBuffer());
 
@@ -45,7 +41,7 @@ consumeInkyMatteucciEvents((event) => {
 
         // Append nel registro JSONL (writer unico)
         registry.appendPhoto({
-          basename: photoId,           // es. "AgAC..."
+          basename: photoId, // es. "AgAC..."
           absPath,
           bytes: st.size,
           telegram: {
@@ -54,7 +50,7 @@ consumeInkyMatteucciEvents((event) => {
             username,
             firstName,
             lastName,
-            timestamp,                // ISO dal bot
+            timestamp, // ISO dal bot
           },
           // addedAtIso: default = now
         });
