@@ -1,0 +1,9 @@
+{
+  "name": "registry-reconciler",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "dependencies": {
+    "inky-matteucci-commons": "workspace:*"
+  }
+}

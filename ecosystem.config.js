@@ -44,13 +44,13 @@ module.exports = {
     },
     {
     name: "registry-reconciler",
-    cwd: "./packages/registry-reconciler",
-    script: "src/index.ts",
+    cwd: "./packages/registry-reconciler/src",
+    script: "index.ts",
     interpreter: "bun",
     env: {
         NODE_ENV: "production",
-        PATH: `${process.env.HOME}/.bun/bin:${process.env.PATH}`,
-    },
+        PATH: `${process.env.HOME}/.bun/bin:${process.env.PATH}`
+        }
     },
   ],
 };
