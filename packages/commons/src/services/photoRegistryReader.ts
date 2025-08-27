@@ -25,6 +25,7 @@ export class PhotoRegistryReader {
   private idxById = new Map<string, PhotoRecord>();
   private idxByPath = new Map<string, PhotoRecord>();
   private lastMtimeMs = -1;
+  private cachedPhotos: PhotoRecord[] = []; // NEW
 
   constructor(private registryFile = REGISTRY_FILE) {}
 
@@ -44,18 +45,22 @@ export class PhotoRegistryReader {
       if (!bucket.has(k)) bucket.set(k, []);
       bucket.get(k)!.push(r);
     }
+
+    const alive: PhotoRecord[] = [];
     for (const [k, arr] of bucket) {
       for (let i = arr.length - 1; i >= 0; i--) {
         const r = arr[i];
         if (r.kind === "photo") {
           this.idxById.set(k, r);
           if (r.storage?.path) this.idxByPath.set(path.resolve(r.storage.path), r);
+          alive.push(r);
           break;
         }
         if (r.kind === "tombstone") break; // morto
       }
     }
 
+    this.cachedPhotos = alive;          // NEW
     this.lastMtimeMs = mtime;
   }
 
@@ -67,5 +72,11 @@ export class PhotoRegistryReader {
   getByPath(absPath: string): PhotoRecord | undefined {
     this.reloadIfNeeded();
     return this.idxByPath.get(path.resolve(absPath));
+  }
+
+  /** Ritorna tutte le foto vive (cached finché il file non cambia) */
+  getAllPhotos(): PhotoRecord[] {
+    this.reloadIfNeeded();
+    return this.cachedPhotos;
   }
 }

@@ -4,6 +4,8 @@ import { v4 as uuidv4 } from "uuid";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
+import { getRanking } from "./ranking";
+
 
 import {
   createInkyMatteucciEventProducer,
@@ -225,7 +227,8 @@ bot.start(async (ctx) => {
   const commandsPublic = [
     "/start - mostra queste informazioni",
     "(invio foto) - salva una nuova immagine da usare sull’Inky",
-    "/current - mostra l'immagine attualmente sull'Inky"
+    "/current - mostra l'immagine attualmente sull'Inky",
+    "/ranking - mostra la classifica e le statistiche"
   ];
 
   const commandsPrivate = [
@@ -321,6 +324,11 @@ bot.command("current", async (ctx) => {
   });
 });
 
+/** -------------------- /ranking ------------------------- */
+bot.command("ranking", async (ctx) => {
+  const msg = getRanking();
+  await ctx.reply(msg);
+});
 
 /** -------------------- Listen for scheduler replies -------------------- **/
 
